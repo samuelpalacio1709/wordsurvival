@@ -7,10 +7,22 @@ import {
   useSphere,
   useBox,
 } from "@react-three/cannon";
+import { useEffect, useRef } from "react";
+import * as THREE from "three";
 
 interface JoystickPosition {
   x: number;
   y: number;
+}
+
+function mergeRefs<T = unknown>(refs: Array<React.Ref<T> | undefined>) {
+  return (value: T) => {
+    refs.forEach((ref) => {
+      if (typeof ref === "function") ref(value);
+      else if (ref && typeof ref === "object")
+        (ref as React.MutableRefObject<T | null>).current = value;
+    });
+  };
 }
 
 function Tree({ position }: { position: [number, number, number] }) {
@@ -52,19 +64,29 @@ function Capsule({ joystickPosition }: { joystickPosition: JoystickPosition }) {
   }));
   const speed = 0.09;
   const { camera } = useThree();
+  const position = useRef([0, 1, 0]);
+  const meshRef = useRef<THREE.Mesh | null>(null);
+  useEffect(() => {
+    const unsubscribe = api.position.subscribe((p) => {
+      position.current = p;
+    });
+    return unsubscribe;
+  }, [api.position]);
   useFrame(() => {
-    if (ref.current) {
-      const normalizedX = joystickPosition.x / 50;
-      const normalizedY = joystickPosition.y / 50;
-      api.velocity.set(normalizedX * speed * 50, 0, normalizedY * speed * 50);
-      camera.position.x = ref.current.position.x;
-      camera.position.z = ref.current.position.z + 15;
-      camera.position.y = 20;
-      camera.lookAt(ref.current.position);
+    const normalizedX = joystickPosition.x / 50;
+    const normalizedY = joystickPosition.y / 50;
+    api.velocity.set(normalizedX * speed * 800, 0, normalizedY * speed * 800);
+    const [x, y, z] = position.current;
+    camera.position.x = x;
+    camera.position.z = z + 15;
+    camera.position.y = 20;
+    camera.lookAt(x, y, z);
+    if (meshRef.current && (normalizedX !== 0 || normalizedY !== 0)) {
+      meshRef.current.rotation.y = Math.atan2(normalizedX, normalizedY);
     }
   });
   return (
-    <mesh ref={ref}>
+    <mesh ref={mergeRefs([ref, meshRef])}>
       <capsuleGeometry args={[0.5, 1, 16, 32]} />
       <meshPhysicalMaterial
         color="orange"
@@ -73,6 +95,14 @@ function Capsule({ joystickPosition }: { joystickPosition: JoystickPosition }) {
         clearcoat={0.5}
         clearcoatRoughness={0.2}
       />
+      <mesh position={[0, 1.25, 0.4]}>
+        <boxGeometry args={[0.7, 0.08, 0.24]} />
+        <meshStandardMaterial color="#222" />
+      </mesh>
+      <mesh position={[0, 1.38, 0.4]}>
+        <boxGeometry args={[0.36, 0.18, 0.18]} />
+        <meshStandardMaterial color="#00aaff" />
+      </mesh>
     </mesh>
   );
 }

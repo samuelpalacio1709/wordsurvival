@@ -1,6 +1,12 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useRef } from "react";
-import { Mesh } from "three";
+import {
+  Physics,
+  Debug,
+  useCylinder,
+  usePlane,
+  useSphere,
+  useBox,
+} from "@react-three/cannon";
 
 interface JoystickPosition {
   x: number;
@@ -8,13 +14,18 @@ interface JoystickPosition {
 }
 
 function Tree({ position }: { position: [number, number, number] }) {
+  const [ref] = useBox(() => ({
+    args: [1, 3, 1],
+    position: [position[0], position[1] + 1.5, position[2]],
+    type: "Static",
+  }));
   return (
-    <group position={position}>
-      <mesh castShadow>
+    <group ref={ref} position={position}>
+      <mesh>
         <cylinderGeometry args={[0.2, 0.2, 1, 8]} />
         <meshStandardMaterial color="#4a2f1b" />
       </mesh>
-      <mesh position={[0, 1.5, 0]} castShadow>
+      <mesh position={[0, 1.5, 0]}>
         <coneGeometry args={[1, 2, 8]} />
         <meshStandardMaterial color="#2d5a27" />
       </mesh>
@@ -23,8 +34,9 @@ function Tree({ position }: { position: [number, number, number] }) {
 }
 
 function Rock({ position }: { position: [number, number, number] }) {
+  const [ref] = useSphere(() => ({ args: [0.5], position, type: "Static" }));
   return (
-    <mesh position={position} castShadow>
+    <mesh ref={ref} position={position}>
       <dodecahedronGeometry args={[0.5, 0]} />
       <meshStandardMaterial color="#666666" roughness={0.8} />
     </mesh>
@@ -32,30 +44,27 @@ function Rock({ position }: { position: [number, number, number] }) {
 }
 
 function Capsule({ joystickPosition }: { joystickPosition: JoystickPosition }) {
-  const meshRef = useRef<Mesh>(null);
+  const [ref, api] = useCylinder(() => ({
+    args: [0.5, 0.5, 2, 16],
+    mass: 1,
+    position: [0, 1, 0],
+    fixedRotation: true,
+  }));
   const speed = 0.09;
   const { camera } = useThree();
-
   useFrame(() => {
-    if (meshRef.current) {
-      // Normalize joystick values to be between -1 and 1
+    if (ref.current) {
       const normalizedX = joystickPosition.x / 50;
       const normalizedY = joystickPosition.y / 50;
-
-      // Allow diagonal movement by applying both X and Z movement
-      meshRef.current.position.x += normalizedX * speed;
-      meshRef.current.position.z += normalizedY * speed;
-
-      // Update camera position to follow player while maintaining offset
-      camera.position.x = meshRef.current.position.x;
-      camera.position.z = meshRef.current.position.z + 15; // Keep the same distance behind
-      camera.position.y = 20; // Keep the same height
-      camera.lookAt(meshRef.current.position);
+      api.velocity.set(normalizedX * speed * 50, 0, normalizedY * speed * 50);
+      camera.position.x = ref.current.position.x;
+      camera.position.z = ref.current.position.z + 15;
+      camera.position.y = 20;
+      camera.lookAt(ref.current.position);
     }
   });
-
   return (
-    <mesh ref={meshRef} position={[0, 0.5, 0]} castShadow>
+    <mesh ref={ref}>
       <capsuleGeometry args={[0.5, 1, 16, 32]} />
       <meshPhysicalMaterial
         color="orange"
@@ -69,8 +78,13 @@ function Capsule({ joystickPosition }: { joystickPosition: JoystickPosition }) {
 }
 
 function Ground() {
+  const [ref] = usePlane(() => ({
+    rotation: [-Math.PI / 2, 0, 0],
+    position: [0, -0.5, 0],
+    type: "Static",
+  }));
   return (
-    <mesh position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+    <mesh ref={ref} position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[100, 100]} />
       <meshStandardMaterial color="#8B4513" roughness={0.8} metalness={0.2} />
     </mesh>
@@ -119,7 +133,16 @@ function Scene({ joystickPosition }: { joystickPosition: JoystickPosition }) {
 
 function App({ joystickPosition }: { joystickPosition: JoystickPosition }) {
   return (
-    <div style={{ width: "100vw", height: "100vh" }}>
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        overflow: "hidden",
+      }}
+    >
       <Canvas
         camera={{
           fov: 45,
@@ -127,23 +150,21 @@ function App({ joystickPosition }: { joystickPosition: JoystickPosition }) {
           near: 0.1,
           far: 1000,
         }}
-        shadows
       >
         <color attach="background" args={["#87CEEB"]} />
         <ambientLight intensity={0.4} />
-        <directionalLight
-          position={[5, 5, 5]}
-          intensity={1}
-          castShadow
-          shadow-mapSize={[1024, 1024]}
-        />
+        <directionalLight position={[0, 10, 0]} intensity={1} />
         <directionalLight
           position={[-5, 5, -5]}
           intensity={0.5}
           color="#ffffff"
         />
         <pointLight position={[0, 5, 0]} intensity={0.5} color="#ffffff" />
-        <Scene joystickPosition={joystickPosition} />
+        <Physics gravity={[0, -30, 0]}>
+          <Debug>
+            <Scene joystickPosition={joystickPosition} />
+          </Debug>
+        </Physics>
       </Canvas>
     </div>
   );
